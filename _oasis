@@ -1,0 +1,33 @@
+OASISFormat:            0.4
+Name:                   jackson
+Version:                0.1
+Synopsis:               Post Office Protocol
+Description:            Post Office Protocol
+Authors:                Romain Calascibetta
+Maintainers:            Romain Calascibetta <romain.calascibetta@gmail.com>
+Homepage:               https://github.com/dinosaure/Jackson
+License:                MIT
+Plugins:                META (0.3), DevFiles (0.3)
+BuildTools:             ocamlbuild
+OCamlVersion:           >= 4.02
+AlphaFeatures:          ocamlbuild_more_args
+
+Library jackson
+  Path:                 lib
+  Modules:              Jackson
+  BuildDepends:         logs, logs.cli, logs.fmt, ipaddr
+
+SourceRepository master
+  Type:                 git
+  Location:             https://github.com/oklm-wsh/Jackson.git
+  Browser:              https://github.com/oklm-wsh/Jackson
+
+Document "jackson"
+  Type:                 ocamlbuild (0.4)
+  BuildTools:           ocamldoc
+  Title:                "Jackson"
+  PostCommand:          cp doc/* jackson.docdir/
+  XOCamlbuildPath:      .
+  XOCamlbuildLibraries: jackson
+  XOCamlbuildExtraArgs:
+    "-docflags '-colorize-code -keep-code -charset utf-8'"
