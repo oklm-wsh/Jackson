@@ -1,0 +1,5 @@
+S lib/
+
+B _build/lib/
+
+PKG alcotest logs logs.cli logs.fmt lwt tls.lwt
