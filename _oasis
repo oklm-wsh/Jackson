@@ -14,7 +14,7 @@ AlphaFeatures:          ocamlbuild_more_args
 
 Library jackson
   Path:                 lib
-  Modules:              Jackson, Decoder, Error, BaseDecoder, Encoder, BaseEncoder, Pop, Eval
+  Modules:              Jackson, Decoder, Error, BaseDecoder, Encoder, BaseEncoder, Pop
   BuildDepends:         logs, logs.cli, logs.fmt, ipaddr
 
 SourceRepository master

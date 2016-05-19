@@ -1,6 +1,7 @@
 #require "jackson";;
 #require "lwt"
 #require "tls.lwt";;
+#require "ppx_deriving.show";;
 
 open Lwt.Infix
 
@@ -25,7 +26,7 @@ let eprint_sexp sexp =
   flush stderr
 
 let run ic oc state command =
-  process ic oc state (Eval.run state command)
+  process ic oc state (Pop.run state command)
   >>= function `Ok ->
                Printf.printf "> +OK\n%!";
                Lwt.return (ic, oc, state)
@@ -33,7 +34,10 @@ let run ic oc state command =
                Printf.printf "> -ERR\n%!";
                Lwt.return (ic, oc, state)
              | `Body s ->
-               Printf.printf "> DATA:\n%s\n%!" s;
+               Printf.printf "> Data:\n%s\n%!" s;
+               Lwt.return (ic, oc, state)
+             | `List l ->
+               Printf.printf "> List:\n%s\n%!" ([%derive.show: (int * int) list] l);
                Lwt.return (ic, oc, state)
              | _ -> Lwt.fail (Failure "Unexpected return")
 
@@ -46,5 +50,5 @@ let connect ?(port = 995) host =
     ~trace:(fun _ -> ())
     Tls.Config.(client ~authenticator ~certificates:(`Single certificate) ())
     (host, port) >>= fun (ic, oc) ->
-  let state, value = Eval.connection () in
+  let state, value = Pop.connection () in
   process ic oc state value >>= function `Ok -> Lwt.return (ic, oc, state) | _ -> Lwt.fail (Failure "Unexpected return")

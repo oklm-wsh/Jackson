@@ -37,13 +37,13 @@ let p_command p state =
        @ fun msg -> p (`List (Some msg)))
       state
   | "RETR" ->
-    p_space state;
-    let msg = p_atom state in
-    p_crlf (p (`Retr msg)) state
+    p_space state
+    ; let msg = p_atom state in
+      p_crlf (p (`Retr msg)) state
   | "DELE" ->
-    p_space state;
-    let msg = p_atom state in
-    p_crlf (p (`Dele msg)) state
+    p_space state
+    ; let msg = p_atom state in
+      p_crlf (p (`Dele msg)) state
   | "NOOP" -> p_crlf (p `Noop) state
   | "RSET" -> p_crlf (p `Rset) state
   | c      -> p_crlf (p (`Unknow c)) state
@@ -62,8 +62,6 @@ let p_to_crlf p state =
   aux false state
 
 let p_response p state =
-  Printf.printf "state: try to read a response\n%!";
-
   match cur_chr state with
   | '+' -> junk_chr state; p_str "OK" state; p_to_crlf (p `Ok) state
   | '-' -> junk_chr state; p_str "ERR" state; p_to_crlf (p `Err) state
@@ -72,8 +70,6 @@ let p_response p state =
 let p_dot p state = p_chr '.' state; p state
 
 let p_body p state =
-  Printf.printf "state: try to read body\n%!";
-
   let stop =
     (p_crlf @ p_dot @ p_crlf (fun state -> `Ok ((), state)))
     / (fun state -> `Continue state)
@@ -84,10 +80,12 @@ let p_body p state =
 
   let rec aux state =
     let rec catch = function
-      | `Stop state -> p (Buffer.contents buf) state
+      | `Stop state ->
+        Printf.printf "END\n%!";
+        p (Buffer.contents buf) state
       | #Error.err as err -> err
       | `Read (buf, off, len, k) ->
-        Printf.printf "> need to read\n%!";
+        Printf.printf "READ\n%!";
         `Read (buf, off, len, (fun i -> catch @@ safe k i))
       | `Continue state ->
         match peek_chr state with
@@ -103,22 +101,42 @@ let p_body p state =
 
   aux state
 
+let is_digit = function
+  | '0' .. '9' -> true
+  | _          -> false
+
+let p_list p =
+  let rec loop acc =
+    (p_dot @ p_crlf @ fun state -> `Ok ((), state))
+    / (fun state ->
+       let msg = int_of_string @@ p_while is_digit state in
+       p_space state
+       ; let size = int_of_string @@ p_while is_digit state in
+         p_crlf (read_line @ loop ((msg, size) :: acc)) state)
+    @ fun () -> p (List.rev acc)
+  in
+
+  read_line (loop [])
+
+let p_noop p state =
+  p state
+
 let p_err _ = `Err
 let p_ok _  = `Ok
 
-let expect_body = function
-  | `List None
-  | `Retr _    -> true
-  | _          -> false
+let extract_data p = function
+  | `List None -> p_list @ fun l -> p (`List l)
+  | `Retr _    -> p_body @ fun o -> p (`Body o)
+  | _          -> p_ok
 
 let decode state x =
-  let body = expect_body x in
+  let p_data = extract_data (fun x _ -> x) x in
   (read_line
    @ p_response
    @ function
      | `Err -> p_err
-     | `Ok when body -> p_body @ fun o _ -> `Body o
-     | `Ok -> p_ok) state
+     | `Ok -> p_data)
+  state
 
 let w_crlf k state =
   w "\r\n" k state
@@ -126,10 +144,10 @@ let w_crlf k state =
 let w_command = function
   | `Quit            -> w "QUIT" $ w_crlf
   | `Stat            -> w "STAT" $ w_crlf
-  | `List (Some msg) -> w "LIST" & w msg $ w_crlf
+  | `List (Some msg) -> w "LIST" & w (string_of_int msg) $ w_crlf
   | `List None       -> w "LIST" $ w_crlf
-  | `Retr msg        -> w "RETR" & w msg $ w_crlf
-  | `Dele msg        -> w "DELE" & w msg $ w_crlf
+  | `Retr msg        -> w "RETR" & w (string_of_int msg) $ w_crlf
+  | `Dele msg        -> w "DELE" & w (string_of_int msg) $ w_crlf
   | `Noop            -> w "NOOP" $ w_crlf
   | `Rset            -> w "RSET" $ w_crlf
   | `User user       -> w "USER" & w user $ w_crlf
@@ -137,5 +155,48 @@ let w_command = function
 
 let w_ret _ = `Ok
 
-let encode state = function
-  | `Command cmd -> w_command cmd (flush w_ret) state
+let encode state cmd = w_command cmd (flush w_ret) state
+
+type t =
+  { dec : Decoder.t
+  ; enc : Encoder.t
+  ; mutable state : [ `Auth | `Trans ] }
+
+let encode x k c =
+  let rec loop = function
+    | `Partial (s, i, l, k) ->
+      `Write (s, i, l, (fun n -> loop (k n)))
+    | `Ok -> k c
+  in
+
+  loop (encode c.enc x)
+
+exception Invalid_command
+
+let decode x k c =
+  let is_pass = function `Pass _ -> true | _ -> false in
+  let rec loop = function
+    | `Read (s, i, l, k) ->
+      `Read (s, i, l, fun n -> loop (k n))
+    | `Ok when c.state = `Auth  && is_pass x ->
+      c.state <- `Trans; k `Ok
+    | `Ok when c.state = `Trans && x = `Quit ->
+      c.state <- `Auth; k `Ok
+    | (`Ok | `Body _ | `List _ | `Err) as result -> k result
+    | `Error _ as err ->
+      raise (Error.Error err)
+  in
+
+  loop (decode c.dec x)
+
+let connection () =
+  let state =
+    { dec = Decoder.make ()
+    ; enc = Encoder.make ()
+    ; state = `Auth }
+  in
+
+  state, decode `Conn (fun x -> x) state
+
+let run state cmd =
+  encode cmd (decode cmd (fun x -> x)) state
