@@ -4,15 +4,13 @@
 #require "ppx_deriving.show";;
 
 open Lwt.Infix
+open Jackson
 
 let rec process ic oc state = function
   | `Read (s, i, l, k) ->
-    Printf.printf "> read\n%!";
     Lwt_io.read_into ic s i l >>= fun n ->
-    Printf.printf "> [%S]" s;
     process ic oc state (k n)
   | `Write (o, pos, len, k) ->
-    Printf.printf "> write\n%!";
     Lwt_io.write_from oc o pos len >>= fun n ->
     process ic oc state (k n)
   | `Error e -> Lwt.fail (Failure ("Moon walk"))

@@ -1,4 +1,5 @@
-open Decoder
+open Jackson_decoder
+module Error = Jackson_error
 
 let safe k state =
   try k state
@@ -110,6 +111,15 @@ let p_chr chr state =
     raise (Error.Error (Error.err_expected chr state))
   | None ->
     raise (Error.Error (Error.err_unexpected_eoi state))
+
+let rec s_chr chr p state =
+  match peek_chr state with
+  | Some c when chr = c ->
+    junk_chr state; p state
+  | Some _ ->
+    raise (Error.Error (Error.err_expected chr state))
+  | None ->
+    read_line (s_chr chr p) state
 
 let p_set l state =
   match peek_chr state with

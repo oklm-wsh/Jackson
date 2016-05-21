@@ -1,10 +1,16 @@
+module Error = Jackson_error
+
 module D =
 struct
-  open BaseDecoder
+  open Jackson_baseDecoder
+
   let p_crlf p state =
     p_chr '\r' state
     ; p_chr '\n' state
     ; p state
+
+  let s_crlf p =
+    s_chr '\r' @ s_chr '\n' @ p
 
   let is_atom = function
     | '\x01' .. '\x07' -> true
@@ -71,7 +77,7 @@ struct
 
   let p_body p state =
     let stop =
-      (p_crlf @ p_dot @ p_crlf (fun state -> `Ok ((), state)))
+      (s_crlf @ p_dot @ s_crlf (fun state -> `Ok ((), state)))
       / (fun state -> `Continue state)
       @ (fun () state -> `Stop state)
     in
@@ -81,11 +87,9 @@ struct
     let rec aux state =
       let rec catch = function
         | `Stop state ->
-          Printf.printf "END\n%!";
           p (Buffer.contents buf) state
         | #Error.err as err -> err
         | `Read (buf, off, len, k) ->
-          Printf.printf "READ\n%!";
           `Read (buf, off, len, (fun i -> catch @@ safe k i))
         | `Continue state ->
           match peek_chr state with
@@ -141,7 +145,7 @@ end
 
 module E =
 struct
-  open BaseEncoder
+  open Jackson_baseEncoder
 
   let w_crlf k state =
     w "\r\n" k state
@@ -164,8 +168,8 @@ struct
 end
 
 type t =
-  { dec : Decoder.t
-  ; enc : Encoder.t
+  { dec : Jackson_decoder.t
+  ; enc : Jackson_encoder.t
   ; mutable state : [ `Auth | `Trans ] }
 
 let encode x k c =
@@ -180,14 +184,9 @@ let encode x k c =
 exception Invalid_command
 
 let decode x k c =
-  let is_pass = function `Pass _ -> true | _ -> false in
   let rec loop = function
     | `Read (s, i, l, k) ->
       `Read (s, i, l, fun n -> loop (k n))
-    | `Ok when c.state = `Auth  && is_pass x ->
-      c.state <- `Trans; k `Ok
-    | `Ok when c.state = `Trans && x = `Quit ->
-      c.state <- `Auth; k `Ok
     | (`Ok | `Body _ | `List _ | `Err) as result -> k result
     | `Error _ as err ->
       raise (Error.Error err)
@@ -197,8 +196,8 @@ let decode x k c =
 
 let connection () =
   let state =
-    { dec = Decoder.make ()
-    ; enc = Encoder.make ()
+    { dec = Jackson_decoder.make ()
+    ; enc = Jackson_encoder.make ()
     ; state = `Auth }
   in
 

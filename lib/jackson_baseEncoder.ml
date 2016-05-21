@@ -1,4 +1,4 @@
-open Encoder
+open Jackson_encoder
 
 let flush p state =
   if state.pos > 0

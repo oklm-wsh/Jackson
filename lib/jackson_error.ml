@@ -7,9 +7,9 @@ type error =
   | `Expected_str        of string ]
 
 let err e state                       = `Error
-                                        (e, state.Decoder.buffer,
-                                            state.Decoder.pos,
-                                            state.Decoder.len)
+                                        (e, state.Jackson_decoder.buffer,
+                                            state.Jackson_decoder.pos,
+                                            state.Jackson_decoder.len)
 let err_unexpected_eoi state          = err `Unexpected_eoi state
 let err_expected chr state            = err (`Expected_char chr) state
 let err_expected_set set state        = err (`Expected_set set) state

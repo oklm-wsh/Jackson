@@ -1,0 +1,41 @@
+opam-version: "1.2"
+name:         "jackson"
+version:      "dev"
+maintainer:   "Romain Calascibetta <romain.calascibetta@gmail.com>"
+authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
+homepage:     "https://github.com/oklm-wsh/Jackson"
+bug-reports:  "https://github.com/oklm-wsh/Jackson/issues"
+dev-repo:     "https://github.com/oklm-wsh/Jackson.git"
+license:      "MIT"
+
+build: [
+  ["./configure"
+    "--prefix=%{prefix}%"]
+  [make]
+]
+
+build-test: [
+  ["./configure"
+    "--enable-tests"
+    "--prefix=%{prefix}%"]
+  [make "test"]
+]
+
+build-doc: [
+  ["./configure"
+    "--enable-docs"
+    "--prefix=%{prefix}%"]
+  [make "doc"]
+]
+
+install: [make "install"]
+remove: ["ocamlfind" "remove" "jackson"]
+
+depends: [
+  "oasis"             {build}
+  "alcotest"          {test}
+  "lwt"               {test}
+  "tls.lwt"           {test}
+]
+
+available: [ocaml-version >= "4.02.0"]
