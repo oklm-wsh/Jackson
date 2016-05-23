@@ -1,6 +1,11 @@
 module Error : (module type of Jackson_error)
+module Decoder : (module type of Jackson_decoder)
+module Encoder : (module type of Jackson_encoder)
 
-type t
+type t =
+  { dec : Decoder.t
+  ; enc : Encoder.t
+  ; mutable state : [ `Auth | `Trans ] }
 
 val connection : unit ->
   t * ([> `Body of string
@@ -9,7 +14,6 @@ val connection : unit ->
         | `Ok
         | `Read of Bytes.t * int * int * (int -> 'a) ]
        as 'a)
-
 
 val run : t ->
   [< `Dele of int

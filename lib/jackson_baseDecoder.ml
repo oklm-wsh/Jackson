@@ -103,53 +103,76 @@ let junk_chr state =
   then state.pos <- state.pos + 1
   else raise (Error.Error (Error.err_unexpected_eoi state))
 
-let p_chr chr state =
-  match peek_chr state with
-  | Some c when chr = c ->
-    junk_chr state
-  | Some _ ->
-    raise (Error.Error (Error.err_expected chr state))
-  | None ->
-    raise (Error.Error (Error.err_unexpected_eoi state))
-
-let rec s_chr chr p state =
+let rec p_chr chr p state =
   match peek_chr state with
   | Some c when chr = c ->
     junk_chr state; p state
   | Some _ ->
     raise (Error.Error (Error.err_expected chr state))
   | None ->
-    read_line (s_chr chr p) state
+    read_line (p_chr chr p) state
 
-let p_set l state =
+let rec p_set l p state =
   match peek_chr state with
   | Some c when List.exists ((=) c) l ->
-    junk_chr state
+    junk_chr state; p state
   | Some _ ->
     raise (Error.Error (Error.err_expected_set l state))
   | None ->
-    raise (Error.Error (Error.err_unexpected_eoi state))
+    read_line (p_set l p) state
 
-let p_str str state =
-  String.iter (fun chr -> p_chr chr state) str
+let p_str str p state =
+  let rec loop pos state =
+    if pos = String.length str
+    then p state
+    else match peek_chr state with
+      | Some chr when String.get str pos = chr ->
+        junk_chr state; loop (pos + 1) state
+      | Some chr ->
+        raise (Error.Error (Error.err_unexpected chr state))
+      | None -> read_line (loop pos) state
+  in
 
-let p_while f state =
-  let i0 = state.pos in
-  while state.pos < state.len && f (Bytes.get state.buffer state.pos)
-  do state.pos <- state.pos + 1 done;
-  if i0 < state.pos
-  then Bytes.sub state.buffer i0 (state.pos - i0)
-  else raise (Error.Error (Error.err_unexpected (cur_chr state) state))
+  loop 0 state
+
+let rec p_while f p state =
+  let buf = Buffer.create 16 in
+
+  let rec loop state =
+    match peek_chr state with
+    | Some chr when f chr ->
+      Buffer.add_char buf chr;
+      junk_chr state;
+      loop state
+    | Some _ ->
+      p (Buffer.contents buf) state
+    | None -> read_line loop state
+  in
+
+  match peek_chr state with
+  | Some chr when f chr ->
+    Buffer.add_char buf chr;
+    junk_chr state;
+    loop state
+  | Some chr -> raise (Error.Error (Error.err_unexpected chr state))
+  | None -> read_line (p_while f p) state
 
 let p_try_rule success fail rule state =
   let tmp = Buffer.create 16 in
 
-  Buffer.add_bytes tmp
-    (Bytes.sub state.buffer state.pos (state.len - state.pos));
+  Buffer.add_bytes tmp (Bytes.sub state.buffer state.pos (state.len - state.pos));
 
   let rec loop = function
     | `Error (err, buf, off, len) ->
-      safe fail (of_string (Buffer.contents tmp))
+      state.pos <- 0;
+      state.len <- Buffer.length tmp;
+      if Buffer.length tmp > Bytes.length state.buffer
+      then state.buffer <- Buffer.contents tmp
+      else begin
+        Bytes.blit_string (Buffer.contents tmp) 0 state.buffer 0 (Buffer.length tmp);
+      end;
+
+      fail state
     | `Read (buf, off, len, k) ->
       `Read (buf, off, len,
         (fun writing ->
